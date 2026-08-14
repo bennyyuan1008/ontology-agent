@@ -1,0 +1,5 @@
+# 依赖清单（正常环境安装用；受限环境直接用 libs/ 离线依赖）
+pyyaml>=6.0
+python-oracledb>=4.0
+cryptography>=50.0
+cffi>=2.0
