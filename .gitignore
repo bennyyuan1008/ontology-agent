@@ -17,3 +17,6 @@ tables_detail.json
 # - libs/ 为离线依赖（pyyaml/oracledb/cryptography/cffi），保留随项目分发；上 GitHub 时可选择
 #   忽略并改用 requirements.txt 安装。
 # - 公司报表模板资产 D:\简历\DCP 位于本仓库之外，不纳入版本管理。
+
+# ������־
+*.log
