@@ -150,11 +150,11 @@ FEW_SHOT = """示例1：问题"2026年3月销售额最高的5家门店？"
 {"object": "Inventory", "properties": ["qty"],
  "order_by": {"property": "qty", "dir": "ASC"}, "limit": 10}
 
-示例6：问题"3月吐司类商品卖了多少？"（品类名是枚举值，直接过滤）
+示例6：问题"3月品类A商品卖了多少？"（品类名是枚举值，直接过滤）
 {"object": "OrderItem", "aggregate": {"func": "SUM", "property": "qty"},
  "filters": [{"link": "order", "property": "order_date", "op": "between", "value": ["2026-03-01", "2026-03-31"]},
              {"link": "order", "property": "type", "op": "=", "value": 0},
-             {"link": "product", "property": "category_name", "op": "=", "value": "吐司类"}]}
+             {"link": "product", "property": "category_name", "op": "=", "value": "品类A"}]}
 
 示例7：问题"客单价是多少？"（派生属性用 derived）
 {"object": "Order", "aggregate": {"derived": "客单价"},

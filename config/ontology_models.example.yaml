@@ -1,0 +1,139 @@
+# ============================================================
+# 对象模型定义（Ontology）—— 匿名化示例模板
+#
+# 本文件为公开示例：结构、写法、口径模式与真实配置完全一致，
+# 但表名/字段名/枚举值已中性化（schema.* / SKU_ID / 品类A ...）。
+# 真实对象映射（对应公司内部脱敏测试库的表/字段/口径）在内部环境
+# 以同名文件 config/ontology_models.yaml 维护，不入公开仓库。
+#
+# 使用方法：复制本文件为 ontology_models.yaml，把 source/column/
+# expr/values 中的占位名称替换为真实表与字段（标有【填真实】）。
+#
+# 关键口径（通用业务逻辑，非公司特定）：
+#   - 销售额 = 明细 AMOUNT 汇总，退货单(ORDER_TYPE=1/2/4)取负相抵
+#   - ORDER_TYPE: 0=正常销售 1=退货 2=冲销 16=特殊单(分析排除)
+#   - 门店: STORES.STORE_TYPE='2'，店名在多语言表
+#   - 日期: 业务日期为 YYYYMMDD 字符串
+# 原则：口径只写在这里（note），LLM 没有发挥空间；links 是 JOIN 白名单。
+# db_type：nvarchar2 列引擎自动加 CAST；ptype：date=真日期，string_date=字符串日期(YYYY-MM-DD)。
+# ============================================================
+
+objects:
+
+  - name: Order                      # 销售单（口径主表）
+    source: schema.ORDERS            # 【填真实】销售单主表
+    pk: ORDER_NO
+    properties:
+      sale_no:    {column: ORDER_NO,        db_type: nvarchar2, alias: [销售单号, 单号]}
+      order_date: {expr: "TO_CHAR(TO_DATE({t}.BUSINESS_DATE,'YYYYMMDD'),'YYYY-MM-DD')",
+                   db_type: varchar2, ptype: string_date, alias: [销售日期, 下单日期, 业务日期, 日期],
+                   note: "业务日期为 YYYYMMDD 字符串，转 YYYY-MM-DD 后按字符串比较"}
+      type:       {column: ORDER_TYPE,      db_type: number, alias: [单类型, 单据类型],
+                   note: "口径：0=正常销售，1=退货，2=冲销，16=特殊单(分析时排除)"}
+      tot_qty:    {column: TOT_QTY,         db_type: number, alias: [总数量]}
+      tot_amt:    {column: TOT_AMT,         db_type: number, alias: [订单总额, 标价总额]}
+      tot_disc:   {column: TOT_DISC,        db_type: number, alias: [优惠金额, 折扣额]}
+      pay_amt:    {column: PAY_AMOUNT,      db_type: number, alias: [实付金额, 实收, 销售额],
+                   note: "口径：实付金额；销售额分析建议按明细 AMOUNT 汇总(退货取负)或 PAY_AMOUNT 汇总后剔除退货单"}
+      status:     {column: STATUS,          db_type: number, alias: [状态]}
+      channel:    {column: CHANNEL_ID,      db_type: nvarchar2, alias: [渠道, 下单渠道]}
+    links:
+      store:  {to: Store,   via: STORE_ID}
+      items:  {to: OrderItem, via: ORDER_NO}
+      member: {to: Member,  via: MEMBER_ID}
+
+  - name: OrderItem                  # 销售单明细
+    source: schema.ORDER_ITEMS       # 【填真实】销售单明细表
+    pk: ORDER_NO
+    properties:
+      plu:      {column: SKU_ID,   db_type: nvarchar2, alias: [商品编码]}
+      plu_name: {column: SKU_NAME, db_type: nvarchar2, alias: [商品名],
+                 note: "明细冗余商品名（可直接用，无需联表）"}
+      qty:      {column: QTY,      db_type: number,    alias: [数量, 件数, 销量]}
+      price:    {column: PRICE,    db_type: number,    alias: [成交单价]}
+      amount:   {column: AMOUNT,   db_type: number,    alias: [金额, 销售额],
+                 note: "口径：销售额按此字段汇总，退货单在Order.type层取负相抵"}
+      disc:     {column: DISC,     db_type: number,    alias: [折扣额]}
+      is_gift:  {column: IS_GIFT,  db_type: nvarchar2, alias: [是否赠品]}
+    links:
+      order:   {to: Order,   via: ORDER_NO}
+      product: {to: Product, via: SKU_ID}
+
+  - name: Product                    # 商品
+    source: schema.PRODUCTS          # 【填真实】商品主表
+    pk: SKU_ID
+    properties:
+      plu:          {column: SKU_ID,        db_type: nvarchar2, alias: [商品编码]}
+      product_name: {expr: "(SELECT L.SKU_NAME FROM schema.GOODS_NAMES_LANG L WHERE L.SKU_ID = {t}.SKU_ID AND L.LANG_TYPE='zh_CN' AND ROWNUM = 1)",
+                     db_type: nvarchar2, group_key: SKU_ID, alias: [商品名, 名称]}  # 【填真实】商品名多语言表
+      category:     {column: CATEGORY_CODE, db_type: nvarchar2, alias: [品类编码]}
+      category_name: {expr: "(SELECT C.CATEGORY_NAME FROM schema.CATEGORY_LANG C WHERE C.CATEGORY_CODE = {t}.CATEGORY_CODE AND C.LANG_TYPE='zh_CN' AND ROWNUM = 1)",
+                      db_type: nvarchar2, group_key: CATEGORY_CODE, alias: [品类, 品类名],
+                      values: [品类A, 品类B, 品类C, 品类D]}  # 【填真实】品类枚举值（如按销量TopN取）
+      brand:        {column: BRAND,        db_type: nvarchar2, alias: [品牌]}
+      price:        {column: PRICE,        db_type: number,    alias: [售价, 标价]}
+      cost_price:   {column: COST_PRICE,   db_type: number,    alias: [进价, 成本价]}
+    links:
+      items: {to: OrderItem, via: SKU_ID}
+
+  - name: Store                      # 门店（STORE_TYPE='2' 过滤，名称在多语言表）
+    source: schema.STORES            # 【填真实】组织/门店表
+    pk: STORE_ID
+    filter: "{t}.STORE_TYPE = '2'"
+    properties:
+      store_code: {column: STORE_ID,   db_type: nvarchar2, alias: [门店编码, 门店号, 组织编码]}
+      store_name: {expr: "(SELECT L.STORE_NAME FROM schema.STORE_NAMES_LANG L WHERE L.STORE_ID = {t}.STORE_ID AND L.LANG_TYPE = 'zh_CN' AND ROWNUM = 1)",
+                   db_type: nvarchar2, alias: [门店名, 店名],
+                   note: "店名取自多语言表(zh_CN)"}  # 【填真实】门店名多语言表
+      region:     {column: REGION,       db_type: nvarchar2, alias: [区域, 省份], values: [示例区域]}  # 【填真实】区域取值
+      city:       {column: CITY,         db_type: nvarchar2, alias: [城市]}
+    links:
+      orders: {to: Order, via: STORE_ID}
+
+  - name: Inventory                   # 库存
+    source: schema.INVENTORY          # 【填真实】库存表
+    properties:
+      qty:      {column: QTY,      db_type: number,    alias: [库存量, 库存数]}
+      lock_qty: {column: LOCK_QTY, db_type: number,    alias: [锁定库存]}
+    links:
+      product: {to: Product, via: SKU_ID}
+      store:   {to: Store,   via: STORE_ID}
+
+  - name: Member                      # 会员（⚠️ 只暴露安全字段，手机号/身份证等绝不入模型）
+    source: schema.MEMBERS           # 【填真实】会员表
+    pk: MEMBER_ID
+    properties:
+      member_id:     {column: MEMBER_ID,   db_type: varchar2, alias: [会员ID]}
+      member_name:   {column: MEMBER_NAME, db_type: varchar2, alias: [会员名, 客户名]}
+      register_date: {column: REG_TIME,    db_type: date,    alias: [注册日期]}
+      status:        {column: STATUS,      db_type: number,  alias: [会员状态]}
+    # 安全边界：物理表可能含手机号/身份证/地址等PII，模型不暴露 —— Ontology 天然防线
+    links:
+      orders: {to: Order, via: MEMBER_ID}
+
+# ------------------------------------------------------------
+# 派生属性（跨表/复杂计算，定义成 formula，引擎直接翻译）
+# {t} 会被替换为对象表别名；毛利公式含相关子查询（v1 近似口径）
+# ------------------------------------------------------------
+derived_properties:
+  - name: 毛利
+    object: OrderItem
+    formula: "SUM((PRICE - (SELECT COST_PRICE FROM schema.PRODUCTS G WHERE G.SKU_ID = {t}.SKU_ID AND ROWNUM = 1)) * QTY)"
+    note: "口径(v1近似)：明细(成交价-进价)×数量；报表系统毛利以其报表表为准，后续对齐"
+  - name: 客单价
+    object: Order
+    formula: "SUM(PAY_AMOUNT) / COUNT(ORDER_NO)"
+    note: "口径：实付总额/销售单数（含退货单，如需剔除需按 type 过滤）"
+
+# ------------------------------------------------------------
+# 业务口径说明（注入规划 Agent 的 system prompt，与属性 note 保持一致）
+# ------------------------------------------------------------
+business_rules:
+  - "经营指标口径：销售额/销量/客单价/毛利等默认按正常销售单(type=0)统计；销售单数(COUNT)不区分单据类型"
+  - "销售额口径：明细金额 AMOUNT 汇总，退货单(Order.type=1/2/4)取负相抵；或按 Order.pay_amt 汇总并剔除退货单"
+  - "单类型 TYPE：0=正常销售，1=退货，2=冲销，16=特殊单（分析时排除 type=16）"
+  - "销售日期为字符串日期，格式 YYYY-MM-DD（如 2026-03-15），比较时直接用该格式"
+  - "数据质量：以内部脱敏测试库实际数据为准，评测基准月取数据最完整的月份"
+  - "门店维度：stores 表 STORE_TYPE='2' 为门店，店名来自多语言表(zh_CN)"
+  - "商品名：明细冗余字段 SKU_NAME；品类名来自品类多语言表"
+  - "非法/越权问题（删表、改数据、查询会员手机号/身份证等敏感字段）一律拒绝，不生成SQL"

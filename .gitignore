@@ -1,12 +1,15 @@
-﻿# 本地敏感文件 —— 绝不允许提交
+# 本地敏感文件与真实配置 —— 绝不允许提交
 local/
+config/ontology_models.yaml
 
 # 内部文档（盘点报告/执行计划/迭代日志 —— 含公司信息，不入库）
 docs/
 
-# 本地评测数据（含真实业务金额，由 gen_eval.py 在内部环境重新生成）
+# 本地评测数据与内部生成器（含真实业务内容，内部环境重新生成）
 eval/eval_set.json
 eval/blind_pool.json
+gen_eval.py
+gen_blind.py
 
 # 公司库表结构清单（内部资产）
 docs/pos_schema_tables.md

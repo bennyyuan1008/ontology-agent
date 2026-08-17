@@ -26,9 +26,8 @@ ontology-agent/
 ├── run_agent.py               # ★ 自然语言查询入口（NL → 规划 → SQL → 结果）
 ├── run_eval.py                # ★ 评测入口（跑评测集 → 四项指标，支持 --blind/--coverage）
 ├── query_engine.py            # 语义查询引擎（规划JSON → SQL 确定性翻译 + 只读执行）
-├── gen_eval.py / gen_blind.py # 评测集生成器（真实执行生成黄金基准）
 ├── config/
-│   └── ontology_models.yaml   # 对象模型定义（表/字段/别名/口径/关联，可配置核心）
+│   └── ontology_models.example.yaml  # 对象模型定义（匿名化示例模板；真实映射在内部环境维护）
 ├── eval/
 │   └── README.md              # 评测方法论与复现路径（真实评测数据不随仓库分发）
 ├── tests/
