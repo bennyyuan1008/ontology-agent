@@ -1,6 +1,9 @@
 ﻿# 本地敏感文件 —— 绝不允许提交
 local/
 
+# 内部文档（盘点报告/执行计划/迭代日志 —— 含公司信息，不入库）
+docs/
+
 # 本地评测数据（含真实业务金额，由 gen_eval.py 在内部环境重新生成）
 eval/eval_set.json
 eval/blind_pool.json

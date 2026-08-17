@@ -35,9 +35,7 @@ ontology-agent/
 ├── local/                     # 本地敏感文件（gitignore，不入库）
 │   ├── oracle_conn.local.json # Oracle 只读账号凭证
 │   └── deepseek_key.local     # DeepSeek API Key
-└── docs/
-    ├── W1盘点报告.md           # 盘点过程/口径来源/评测结果
-    └── 执行计划.md             # 项目执行计划（Ontology 一体方案）
+└── docs/ 参考                  # 内部文档（盘点报告/执行计划等，含公司信息，不入库）
 ```
 
 ## 快速开始
