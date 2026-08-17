@@ -5,12 +5,12 @@
   intent → plan(★Ontology规划) → gen_sql(确定性翻译) → execute → answer
   执行失败时自动带错误信息回退重新规划（最多2次）
 
-依赖：pyyaml、oracledb（本地 _pylibs）+ 标准库 urllib（DeepSeek OpenAI 兼容接口，无需 openai SDK）
-密钥：环境变量 DEEPSEEK_API_KEY，或本地文件 deepseek_key.local（已 gitignore）
+依赖：pyyaml、oracledb（本地 libs/）+ 标准库 urllib（DeepSeek OpenAI 兼容接口，无需 openai SDK）
+密钥：环境变量 DEEPSEEK_API_KEY，或本地文件 local/deepseek_key.local（已 gitignore）
 
 用法：
-  $env:PYTHONPATH = "D:\简历\_pylibs"
-  py 05_NL规划Agent_pipeline.py --question "2026年3月销售额最高的5家门店？"
+  在项目目录下直接运行（自动加载 libs/，无需设 PYTHONPATH）：
+  py run_agent.py --question "2026年3月销售额最高的5家门店？"
 """
 import importlib.util
 import json

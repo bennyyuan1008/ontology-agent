@@ -19,7 +19,7 @@
 ```
 ontology-agent/
 ├── README.md                  # 本文件
-├── requirements.txt           # 依赖清单（离线依赖见 libs/）
+├── requirements.txt           # 依赖清单（pip install -r requirements.txt）
 ├── .gitignore
 ├── run_agent.py               # ★ 自然语言查询入口（NL → 规划 → SQL → 结果）
 ├── run_eval.py                # ★ 评测入口（跑20条评测集 → 指标）
@@ -29,30 +29,29 @@ ontology-agent/
 ├── config/
 │   └── ontology_models.yaml   # 对象模型定义（表/字段/别名/口径/关联，可配置核心）
 ├── eval/
-│   └── eval_set.json          # 评测集（20条：17查询+2拒绝+1边界，含黄金SQL与真实结果）
+│   ├── README.md               # 评测方法论与复现路径（真实评测数据不随仓库分发）
+│   ├── gen_eval.py 参考        # 生成器：在内部环境生成黄金评测集（见 eval/README.md）
+│   └── run_eval.py 参考        # 运行器：输出四项指标 + --blind/--coverage
 ├── local/                     # 本地敏感文件（gitignore，不入库）
 │   ├── oracle_conn.local.json # Oracle 只读账号凭证
 │   └── deepseek_key.local     # DeepSeek API Key
-├── libs/                      # 离线依赖（pyyaml/oracledb/cryptography/cffi）
 └── docs/
     ├── W1盘点报告.md           # 盘点过程/口径来源/评测结果
-    ├── 执行计划.md             # 项目执行计划（Ontology 一体方案）
-    └── pos_schema_tables.md   # POS schema 表清单
+    └── 执行计划.md             # 项目执行计划（Ontology 一体方案）
 ```
 
 ## 快速开始
 
 ```powershell
-# 1. 确认 local/ 下有 oracle_conn.local.json 和 deepseek_key.local
-# 2. 在 ontology-agent 目录下直接运行（无需设 PYTHONPATH，自动加载 libs/）
+# 1. 安装依赖：pip install -r requirements.txt（含 pyyaml / python-oracledb 等）
+# 2. 准备 local/ 下的 oracle_conn.local.json（Oracle 只读凭证）与 deepseek_key.local（DeepSeek Key）
+# 3. 在项目目录下运行：
 
 py run_agent.py --question "2026年3月销售额最高的5家门店？"
-# 规划: {...}   SQL: SELECT ...   ✅ 结果：直营店1-16: 847043.83 ...
+# 规划: {...}   SQL: SELECT ...   ✅ 结果（示例）：门店A: 100.5万 ...
 
-py run_eval.py        # 跑完整评测集，输出四项指标
-
-py schema_inventory.py --oracle ""   # 盘点（凭证从 local/ 读取，可加 --owner POS）
-py gen_eval.py                       # 重新生成黄金评测集（需数据库连通）
+py run_eval.py        # 跑评测集，输出四项指标（评测数据需先按 eval/README.md 在内部环境生成）
+py gen_eval.py        # 在内部环境生成黄金评测集（需连接脱敏测试库）
 ```
 
 ## 当前评测指标（R1 迭代后，2026-08-15）
@@ -77,7 +76,7 @@ py gen_eval.py                       # 重新生成黄金评测集（需数据�
 
 ## 口径来源（权威）
 
-`D:\简历\DCP` 帆软报表模板库（公司资产，不在本仓库）中的报表 SQL：
+内部帆软报表模板库（公司资产，不在本仓库）中的报表 SQL：
 - 销售额 = 明细 `AMT` 汇总，退货单（type=1/2/4）取负相抵
 - 单类型：0=正常 / 1=退货 / 2=冲销 / 16=特殊单（排除）
 - 门店 `org_form='2'`；店名/品类名取多语言表（zh_CN）
@@ -86,7 +85,7 @@ py gen_eval.py                       # 重新生成黄金评测集（需数据�
 
 - 只读连接 + 只读事务 + SQL 黑名单 + 强制 LIMIT
 - 对象模型不暴露 PII；非法/越权问题一律拒绝（评测集含真实用例）
-- 开源仓库只含代码/配置/评测集；`local/` 凭证与 `DCP/` 报表资产不纳入
+- 开源仓库只含代码/配置/评测集；`local/` 凭证与报表模板资产不纳入
 
 ## 演进路线
 

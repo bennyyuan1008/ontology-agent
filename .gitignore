@@ -1,5 +1,15 @@
-# 本地敏感文件 —— 绝不允许提交
+﻿# 本地敏感文件 —— 绝不允许提交
 local/
+
+# 本地评测数据（含真实业务金额，由 gen_eval.py 在内部环境重新生成）
+eval/eval_set.json
+eval/blind_pool.json
+
+# 公司库表结构清单（内部资产）
+docs/pos_schema_tables.md
+
+# 离线依赖（改用 requirements.txt 安装）
+libs/
 
 # Python
 __pycache__/
@@ -7,16 +17,5 @@ __pycache__/
 .venv/
 .env
 
-# 盘点输出 / 本地快照
-inventory_report.md
-tables_detail.json
-*快照*.db
-*.db
-
-# 说明：
-# - libs/ 为离线依赖（pyyaml/oracledb/cryptography/cffi），保留随项目分发；上 GitHub 时可选择
-#   忽略并改用 requirements.txt 安装。
-# - 公司报表模板资产 D:\简历\DCP 位于本仓库之外，不纳入版本管理。
-
-# ������־
+# 运行日志
 *.log
