@@ -26,7 +26,7 @@ if os.path.isdir(_LIB) and _LIB not in sys.path:
 
 KEY_FILE = "local/deepseek_key.local"
 MAX_RETRY = 2
-FORBIDDEN = re.compile(r"\b(insert|update|delete|drop|alter|truncate|create|grant|exec)\b|手机号|身份证", re.I)
+FORBIDDEN = re.compile(r"\b(insert|update|delete|drop|alter|truncate|create|grant|exec)\b|手机号|身份证|删掉|清空|修改|更新|插入|重置|作废|篡改", re.I)
 DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
 
 
@@ -120,6 +120,7 @@ PLAN_SCHEMA = """输出规划JSON，字段说明：
 - 按月/按周统计（月度趋势）→ group_by 用 {"property": "order_date", "bucket": "month"}
 - 日期一律用字符串 "YYYY-MM-DD"（如 "2026-03-01"），不写"今天/上月"等相对词
 - 非法/越权（删数据、改数据、查敏感字段如手机号/身份证/银行账号）输出 {"reject": "原因"}
+- 区分『问口径』与『执行操作』：询问计算规则（如"退货算不算销售额""删除的订单怎么算"）是合法查询，应正常规划（可查对应口径的单据金额）；只有要求删改数据/查敏感字段才拒绝
 - 只输出JSON，不要任何解释"""
 
 FEW_SHOT = """示例1：问题"2026年3月销售额最高的5家门店？"
