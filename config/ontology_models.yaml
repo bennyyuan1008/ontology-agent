@@ -61,7 +61,8 @@ objects:
                      db_type: nvarchar2, group_key: PLUNO, alias: [商品名, 名称]}
       category:     {column: CATEGORY, db_type: nvarchar2, alias: [品类编码]}
       category_name: {expr: "(SELECT C.CATEGORY_NAME FROM POS.DCP_CATEGORY_LANG C WHERE C.CATEGORY = {t}.CATEGORY AND C.LANG_TYPE='zh_CN' AND ROWNUM = 1)",
-                     db_type: nvarchar2, group_key: CATEGORY, alias: [品类, 品类名]}
+                     db_type: nvarchar2, group_key: CATEGORY, alias: [品类, 品类名],
+                      values: [香甜类, 调理类, 吐司类, 餐包类, 冷藏蛋糕类, 戚风蛋糕类, 西式冷点类, 丹麦可颂类, 食品类, 欧式面包类, 饮料类, 日常包材类, 切件类, 欧包类, 冷藏面包类, 果饮类, 海绵蛋糕类, 订货类]}
       brand:        {column: BRAND,    db_type: nvarchar2, alias: [品牌]}
       price:        {column: PRICE,    db_type: number,    alias: [售价, 标价]}
       cost_price:   {column: SUPPRICE, db_type: number,    alias: [进价, 成本价]}
@@ -77,7 +78,7 @@ objects:
       store_name: {expr: "(SELECT L.ORG_NAME FROM POS.DCP_ORG_LANG L WHERE L.ORGANIZATIONNO = {t}.ORGANIZATIONNO AND L.LANG_TYPE = 'zh_CN' AND ROWNUM = 1)",
                    db_type: nvarchar2, alias: [门店名, 店名],
                    note: "店名取自 dcp_org_lang(zh_CN)；报表用 ORG_NAME 或 编码_名称"}
-      region:     {column: PROVINCE,       db_type: nvarchar2, alias: [区域, 省份]}
+      region:     {column: PROVINCE,       db_type: nvarchar2, alias: [区域, 省份], values: [福建省]}
       city:       {column: CITY,           db_type: nvarchar2, alias: [城市]}
     links:
       orders: {to: Order, via: ORGANIZATIONNO}

@@ -65,7 +65,7 @@ def llm(system: str, user: str, temperature: float = 0.1, max_tokens: int = 1500
         "stream": False,
     }).encode("utf-8")
     last_err = None
-    for attempt in range(3):  # 沙箱网络偶发抖动，重试
+    for attempt in range(5):  # 沙箱网络间歇抖动，重试5次·指数退避
         try:
             req = urllib.request.Request(
                 DEEPSEEK_URL, data=body,
@@ -76,7 +76,7 @@ def llm(system: str, user: str, temperature: float = 0.1, max_tokens: int = 1500
         except Exception as e:
             last_err = e
             import time
-            time.sleep(2 * (attempt + 1))
+            time.sleep(3 * (attempt + 1))
     raise last_err
 
 
@@ -89,7 +89,8 @@ def build_model_summary(cfg: dict) -> str:
         for p, v in obj["props"].items():
             aliases = "/".join(v.get("alias", []) or ["-"])
             note = f"，{v['note']}" if v.get("note") else ""
-            props.append(f"{p}(别名:{aliases}{note})")
+            vals = f"，取值:{'/'.join(v['values'])}" if v.get("values") else ""
+            props.append(f"{p}(别名:{aliases}{vals}{note})")
         links = ", ".join(f"{k}→{v['to']}" for k, v in obj["links"].items())
         lines.append(f"- {name}: 属性[{'; '.join(props)}] 关联[{links}]")
     lines.append("\n派生属性（aggregate 里用 derived 引用）：")
@@ -144,7 +145,21 @@ FEW_SHOT = """示例1：问题"2026年3月销售额最高的5家门店？"
  "filters": [{"property": "order_date", "op": "between", "value": ["2025-12-01", "2026-03-31"]}],
  "group_by": [{"property": "order_date", "bucket": "month"}]}
 
-示例5：问题"把订单表删掉"
+示例5：问题"库存最少的10个商品？"（点查+排序，无聚合）
+{"object": "Inventory", "properties": ["qty"],
+ "order_by": {"property": "qty", "dir": "ASC"}, "limit": 10}
+
+示例6：问题"3月吐司类商品卖了多少？"（品类名是枚举值，直接过滤）
+{"object": "OrderItem", "aggregate": {"func": "SUM", "property": "qty"},
+ "filters": [{"link": "order", "property": "order_date", "op": "between", "value": ["2026-03-01", "2026-03-31"]},
+             {"link": "order", "property": "type", "op": "=", "value": 0},
+             {"link": "product", "property": "category_name", "op": "=", "value": "吐司类"}]}
+
+示例7：问题"客单价是多少？"（派生属性用 derived）
+{"object": "Order", "aggregate": {"derived": "客单价"},
+ "filters": [{"property": "type", "op": "=", "value": 0}]}
+
+示例8：问题"把订单表删掉"
 {"reject": "只允许查询，禁止写操作"}"""
 
 

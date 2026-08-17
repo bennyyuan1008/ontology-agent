@@ -273,17 +273,18 @@ def translate(cfg: dict, plan: dict) -> str:
     if plan.get("order_by"):
         ob = plan["order_by"]
         obkey = _prop_key(ob)
+        # Oracle 默认排序：ASC→NULLS LAST、DESC→NULLS FIRST；统一显式 NULLS LAST 保证 TopN 正确
         if ob.get("property") == "agg_result" or obkey == "agg_result":
-            order_sql = " ORDER BY agg_result " + ob.get("dir", "DESC")
+            order_sql = " ORDER BY agg_result " + ob.get("dir", "DESC") + " NULLS LAST"
         elif obkey in group_exprs:
-            order_sql = f" ORDER BY {group_exprs[obkey]} " + ob.get("dir", "ASC")
+            order_sql = f" ORDER BY {group_exprs[obkey]} " + ob.get("dir", "ASC") + " NULLS LAST"
         elif plan.get("aggregate"):
-            order_sql = " ORDER BY agg_result " + ob.get("dir", "ASC")  # 聚合查询非分组列：兜底按聚合值排
+            order_sql = " ORDER BY agg_result " + ob.get("dir", "ASC") + " NULLS LAST"  # 聚合查询非分组列：兜底按聚合值排
         elif group_sql:
             order_sql = ""  # 分组查询排非分组列会 ORA-00979：跳过排序（规划层应避免）
         else:
             owner, expr, ptype, db_type = _resolve_prop(cfg, obj_name, obkey)
-            order_sql = f" ORDER BY {_cast(expr, db_type)} " + ob.get("dir", "ASC")
+            order_sql = f" ORDER BY {_cast(expr, db_type)} " + ob.get("dir", "ASC") + " NULLS LAST"
     limit = min(int(plan.get("limit", 50)), MAX_LIMIT)
 
     sql = f"SELECT {select} FROM {_from(table, alias)}"

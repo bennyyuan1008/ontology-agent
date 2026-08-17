@@ -39,7 +39,7 @@
         },
         "limit": 1
       },
-      "expected_sql": "SELECT SUM(\"Order\".\"PAY_AMT\") AS agg_result, CAST((SELECT L.ORG_NAME FROM POS.DCP_ORG_LANG L WHERE L.ORGANIZATIONNO = \"store\".ORGANIZATIONNO AND L.LANG_TYPE = 'zh_CN' AND ROWNUM = 1) AS VARCHAR2(4000)) FROM \"POS\".\"DCP_SALE\" \"Order\" JOIN \"POS\".\"DCP_ORG\" \"store\" ON \"Order\".\"SHOPID\" = \"store\".\"ORGANIZATIONNO\" WHERE TO_CHAR(TO_DATE(\"Order\".BDATE,'YYYYMMDD'),'YYYY-MM-DD') BETWEEN '2026-03-01' AND '2026-03-31' AND \"Order\".\"TYPE\" = '0' GROUP BY \"store\".\"ORGANIZATIONNO\" ORDER BY agg_result DESC FETCH FIRST 1 ROWS ONLY",
+      "expected_sql": "SELECT SUM(\"Order\".\"PAY_AMT\") AS agg_result, CAST((SELECT L.ORG_NAME FROM POS.DCP_ORG_LANG L WHERE L.ORGANIZATIONNO = \"store\".ORGANIZATIONNO AND L.LANG_TYPE = 'zh_CN' AND ROWNUM = 1) AS VARCHAR2(4000)) FROM \"POS\".\"DCP_SALE\" \"Order\" JOIN \"POS\".\"DCP_ORG\" \"store\" ON \"Order\".\"SHOPID\" = \"store\".\"ORGANIZATIONNO\" WHERE TO_CHAR(TO_DATE(\"Order\".BDATE,'YYYYMMDD'),'YYYY-MM-DD') BETWEEN '2026-03-01' AND '2026-03-31' AND \"Order\".\"TYPE\" = '0' GROUP BY \"store\".\"ORGANIZATIONNO\" ORDER BY agg_result DESC NULLS LAST FETCH FIRST 1 ROWS ONLY",
       "expected_result": [
         {
           "AGG_RESULT": 847043.83,
@@ -160,7 +160,7 @@
         },
         "limit": 1
       },
-      "expected_sql": "SELECT SUM(\"OrderItem\".\"QTY\") AS agg_result, CAST((SELECT L.PLU_NAME FROM POS.DCP_GOODS_LANG L WHERE L.PLUNO = \"product\".PLUNO AND L.LANG_TYPE='zh_CN' AND ROWNUM = 1) AS VARCHAR2(4000)) FROM \"POS\".\"DCP_SALE_DETAIL\" \"OrderItem\" JOIN \"POS\".\"DCP_GOODS\" \"product\" ON \"OrderItem\".\"PLUNO\" = \"product\".\"PLUNO\" JOIN \"POS\".\"DCP_SALE\" \"order\" ON \"OrderItem\".\"SALENO\" = \"order\".\"SALENO\" WHERE TO_CHAR(TO_DATE(\"order\".BDATE,'YYYYMMDD'),'YYYY-MM-DD') BETWEEN '2026-03-01' AND '2026-03-31' AND \"order\".\"TYPE\" = '1' GROUP BY \"product\".\"PLUNO\" ORDER BY agg_result DESC FETCH FIRST 1 ROWS ONLY",
+      "expected_sql": "SELECT SUM(\"OrderItem\".\"QTY\") AS agg_result, CAST((SELECT L.PLU_NAME FROM POS.DCP_GOODS_LANG L WHERE L.PLUNO = \"product\".PLUNO AND L.LANG_TYPE='zh_CN' AND ROWNUM = 1) AS VARCHAR2(4000)) FROM \"POS\".\"DCP_SALE_DETAIL\" \"OrderItem\" JOIN \"POS\".\"DCP_SALE\" \"order\" ON \"OrderItem\".\"SALENO\" = \"order\".\"SALENO\" JOIN \"POS\".\"DCP_GOODS\" \"product\" ON \"OrderItem\".\"PLUNO\" = \"product\".\"PLUNO\" WHERE TO_CHAR(TO_DATE(\"order\".BDATE,'YYYYMMDD'),'YYYY-MM-DD') BETWEEN '2026-03-01' AND '2026-03-31' AND \"order\".\"TYPE\" = '1' GROUP BY \"product\".\"PLUNO\" ORDER BY agg_result DESC NULLS LAST FETCH FIRST 1 ROWS ONLY",
       "expected_result": [
         {
           "AGG_RESULT": 529,
@@ -204,7 +204,7 @@
           }
         ]
       },
-      "expected_sql": "SELECT SUM(\"OrderItem\".\"QTY\") AS agg_result FROM \"POS\".\"DCP_SALE_DETAIL\" \"OrderItem\" JOIN \"POS\".\"DCP_GOODS\" \"product\" ON \"OrderItem\".\"PLUNO\" = \"product\".\"PLUNO\" JOIN \"POS\".\"DCP_SALE\" \"order\" ON \"OrderItem\".\"SALENO\" = \"order\".\"SALENO\" WHERE TO_CHAR(TO_DATE(\"order\".BDATE,'YYYYMMDD'),'YYYY-MM-DD') BETWEEN '2026-03-01' AND '2026-03-31' AND \"order\".\"TYPE\" = '0' AND CAST((SELECT C.CATEGORY_NAME FROM POS.DCP_CATEGORY_LANG C WHERE C.CATEGORY = \"product\".CATEGORY AND C.LANG_TYPE='zh_CN' AND ROWNUM = 1) AS VARCHAR2(4000)) = '吐司类' FETCH FIRST 50 ROWS ONLY",
+      "expected_sql": "SELECT SUM(\"OrderItem\".\"QTY\") AS agg_result FROM \"POS\".\"DCP_SALE_DETAIL\" \"OrderItem\" JOIN \"POS\".\"DCP_SALE\" \"order\" ON \"OrderItem\".\"SALENO\" = \"order\".\"SALENO\" JOIN \"POS\".\"DCP_GOODS\" \"product\" ON \"OrderItem\".\"PLUNO\" = \"product\".\"PLUNO\" WHERE TO_CHAR(TO_DATE(\"order\".BDATE,'YYYYMMDD'),'YYYY-MM-DD') BETWEEN '2026-03-01' AND '2026-03-31' AND \"order\".\"TYPE\" = '0' AND CAST((SELECT C.CATEGORY_NAME FROM POS.DCP_CATEGORY_LANG C WHERE C.CATEGORY = \"product\".CATEGORY AND C.LANG_TYPE='zh_CN' AND ROWNUM = 1) AS VARCHAR2(4000)) = '吐司类' FETCH FIRST 50 ROWS ONLY",
       "expected_result": [
         {
           "AGG_RESULT": 60264
@@ -228,10 +228,10 @@
         },
         "limit": 1
       },
-      "expected_sql": "SELECT \"Inventory\".\"QTY\" FROM \"POS\".\"DCP_STOCK\" \"Inventory\" ORDER BY \"Inventory\".\"QTY\" DESC FETCH FIRST 1 ROWS ONLY",
+      "expected_sql": "SELECT \"Inventory\".\"QTY\" FROM \"POS\".\"DCP_STOCK\" \"Inventory\" ORDER BY \"Inventory\".\"QTY\" DESC NULLS LAST FETCH FIRST 1 ROWS ONLY",
       "expected_result": [
         {
-          "QTY": null
+          "QTY": 223907.0
         }
       ],
       "kind": "query"
@@ -272,7 +272,7 @@
           "dir": "DESC"
         }
       },
-      "expected_sql": "SELECT SUM(PAY_AMT) / COUNT(SALENO) AS agg_result, CAST((SELECT L.ORG_NAME FROM POS.DCP_ORG_LANG L WHERE L.ORGANIZATIONNO = \"store\".ORGANIZATIONNO AND L.LANG_TYPE = 'zh_CN' AND ROWNUM = 1) AS VARCHAR2(4000)) FROM \"POS\".\"DCP_SALE\" \"Order\" JOIN \"POS\".\"DCP_ORG\" \"store\" ON \"Order\".\"SHOPID\" = \"store\".\"ORGANIZATIONNO\" WHERE TO_CHAR(TO_DATE(\"Order\".BDATE,'YYYYMMDD'),'YYYY-MM-DD') BETWEEN '2026-03-01' AND '2026-03-31' AND \"Order\".\"TYPE\" = '0' GROUP BY \"store\".\"ORGANIZATIONNO\" ORDER BY agg_result DESC FETCH FIRST 50 ROWS ONLY",
+      "expected_sql": "SELECT SUM(PAY_AMT) / COUNT(SALENO) AS agg_result, CAST((SELECT L.ORG_NAME FROM POS.DCP_ORG_LANG L WHERE L.ORGANIZATIONNO = \"store\".ORGANIZATIONNO AND L.LANG_TYPE = 'zh_CN' AND ROWNUM = 1) AS VARCHAR2(4000)) FROM \"POS\".\"DCP_SALE\" \"Order\" JOIN \"POS\".\"DCP_ORG\" \"store\" ON \"Order\".\"SHOPID\" = \"store\".\"ORGANIZATIONNO\" WHERE TO_CHAR(TO_DATE(\"Order\".BDATE,'YYYYMMDD'),'YYYY-MM-DD') BETWEEN '2026-03-01' AND '2026-03-31' AND \"Order\".\"TYPE\" = '0' GROUP BY \"store\".\"ORGANIZATIONNO\" ORDER BY agg_result DESC NULLS LAST FETCH FIRST 50 ROWS ONLY",
       "expected_result": [
         {
           "AGG_RESULT": 185.21333333333334,

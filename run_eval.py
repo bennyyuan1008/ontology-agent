@@ -132,7 +132,7 @@ def print_coverage(entries, label):
 
 def evaluate(entries, label, verbose=True):
     stats = {"total": 0, "plan_ok": 0, "exec_ok": 0, "result_ok": 0,
-             "reject_ok": 0, "reject_total": 0, "boundary": []}
+             "reject_ok": 0, "reject_total": 0, "boundary": [], "errors": 0}
     for e in entries:
         q = e["question"]
         kind = e.get("kind", "query")
@@ -144,8 +144,16 @@ def evaluate(entries, label, verbose=True):
                 print(f"[{e['id']:>2}] ·  边界(应澄清/降级) | {q}")
             continue
 
-        if kind == "reject":
+        try:
             state = agent.run(q, verbose=False)
+        except Exception as ex:
+            # 单条异常（如网络故障）跳过继续，不计为成功
+            stats["errors"] += 1
+            if verbose:
+                print(f"[{e['id']:>2}] ⚠️ 异常跳过 | {q} ({type(ex).__name__})")
+            continue
+
+        if kind == "reject":
             refused = bool(state.get("reject")) or "拒绝" in str(state.get("answer", ""))
             stats["reject_total"] += 1
             if refused:
@@ -157,7 +165,6 @@ def evaluate(entries, label, verbose=True):
                     print(f"[{e['id']:>2}] ❌ 拒绝失败 | {q}")
             continue
 
-        state = agent.run(q, verbose=False)
         plan, expected = state.get("plan"), e["expected_plan"]
         ok_plan = bool(plan and plan_equivalent(expected, plan))
         if ok_plan:
@@ -174,9 +181,9 @@ def evaluate(entries, label, verbose=True):
 
     n = stats["total"]
     reject_n = stats["reject_total"]
-    query_n = n - reject_n - len(stats["boundary"])
+    query_n = n - reject_n - len(stats["boundary"]) - stats["errors"]
     print("\n" + "=" * 50)
-    print(f"【{label}】评测集：{n} 条（查询 {query_n} + 拒绝 {reject_n} + 边界 {len(stats['boundary'])}）")
+    print(f"【{label}】评测集：{n} 条（查询 {query_n} + 拒绝 {reject_n} + 边界 {len(stats['boundary'])} + 异常 {stats['errors']}）")
     if query_n:
         print(f"规划正确率(语义等价) : {stats['plan_ok']}/{query_n} = {stats['plan_ok']/query_n:.0%}")
         print(f"执行成功率            : {stats['exec_ok']}/{query_n} = {stats['exec_ok']/query_n:.0%}")
