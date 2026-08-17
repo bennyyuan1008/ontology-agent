@@ -19,23 +19,23 @@
 ```
 ontology-agent/
 ├── README.md                  # 本文件
+├── LICENSE                    # MIT
+├── pyproject.toml             # 项目元数据与依赖
 ├── requirements.txt           # 依赖清单（pip install -r requirements.txt）
 ├── .gitignore
 ├── run_agent.py               # ★ 自然语言查询入口（NL → 规划 → SQL → 结果）
-├── run_eval.py                # ★ 评测入口（跑20条评测集 → 指标）
+├── run_eval.py                # ★ 评测入口（跑评测集 → 四项指标，支持 --blind/--coverage）
 ├── query_engine.py            # 语义查询引擎（规划JSON → SQL 确定性翻译 + 只读执行）
-├── gen_eval.py                # 评测集生成器（真实执行生成黄金基准）
-├── schema_inventory.py        # 数据库盘点工具（表清单/字段/行数）
+├── gen_eval.py / gen_blind.py # 评测集生成器（真实执行生成黄金基准）
 ├── config/
 │   └── ontology_models.yaml   # 对象模型定义（表/字段/别名/口径/关联，可配置核心）
 ├── eval/
-│   ├── README.md               # 评测方法论与复现路径（真实评测数据不随仓库分发）
-│   ├── gen_eval.py 参考        # 生成器：在内部环境生成黄金评测集（见 eval/README.md）
-│   └── run_eval.py 参考        # 运行器：输出四项指标 + --blind/--coverage
-├── local/                     # 本地敏感文件（gitignore，不入库）
-│   ├── oracle_conn.local.json # Oracle 只读账号凭证
-│   └── deepseek_key.local     # DeepSeek API Key
-└── docs/ 参考                  # 内部文档（盘点报告/执行计划等，含公司信息，不入库）
+│   └── README.md              # 评测方法论与复现路径（真实评测数据不随仓库分发）
+├── tests/
+│   └── test_e2e.py            # 端到端冒烟测试（9 用例）
+├── tools/
+│   └── schema_inventory.py    # 数据库盘点工具（表清单/字段/行数）
+└── local/ 参考                 # 本地敏感文件（gitignore，不入库）
 ```
 
 ## 快速开始
@@ -49,6 +49,8 @@ py run_agent.py --question "2026年3月销售额最高的5家门店？"
 # 规划: {...}   SQL: SELECT ...   ✅ 结果（示例）：门店A: 100.5万 ...
 
 py run_eval.py        # 跑评测集，输出四项指标（评测数据需先按 eval/README.md 在内部环境生成）
+py tests/test_e2e.py  # 端到端冒烟测试（9 用例）
+py tools/schema_inventory.py --oracle ""   # 盘点（凭证从 local/ 读取，可加 --owner POS）
 py gen_eval.py        # 在内部环境生成黄金评测集（需连接脱敏测试库）
 ```
 

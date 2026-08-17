@@ -4,7 +4,7 @@
 覆盖：简单查询 / 关联聚合 / 枚举值过滤 / 派生属性 / 派生+分组 / 拒绝×2 / 边界降级
 
 用法：
-  py test_e2e.py
+  py tests/test_e2e.py
 需要：local/ 凭证 + 网络（DeepSeek）+ 可连 Oracle。
 """
 import importlib.util
@@ -12,12 +12,14 @@ import json
 import os
 import sys
 
-_LIB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "libs")
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+_LIB = os.path.join(_ROOT, "libs")
 if os.path.isdir(_LIB) and _LIB not in sys.path:
     sys.path.insert(0, _LIB)
 
 spec = importlib.util.spec_from_file_location(
-    "agent", os.path.join(os.path.dirname(os.path.abspath(__file__)), "run_agent.py"))
+    "agent", os.path.join(_ROOT, "run_agent.py"))
 agent = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(agent)
 

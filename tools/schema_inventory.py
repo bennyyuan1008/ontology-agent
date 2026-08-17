@@ -31,11 +31,12 @@ import sys
 from collections import defaultdict
 
 # 本地依赖引导：确保 libs 目录在 sys.path（无需手动设 PYTHONPATH）
-_LIB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "libs")
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_LIB = os.path.join(_ROOT, "libs")
 if os.path.isdir(_LIB) and _LIB not in sys.path:
     sys.path.insert(0, _LIB)
 
-ORACLE_LOCAL_FILE = "local/oracle_conn.local.json"  # 本地凭证文件（已被 .gitignore 排除）
+ORACLE_LOCAL_FILE = os.path.join(_ROOT, "local", "oracle_conn.local.json")  # 本地凭证文件（已被 .gitignore 排除）
 
 
 def _load_oracle_cfg(arg: str):
