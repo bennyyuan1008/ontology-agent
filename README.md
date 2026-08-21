@@ -1,6 +1,6 @@
 # Ontology Agent
 
-一个面向零售经营分析的语义层与 Agent MVP。项目受 Palantir Ontology 的“业务对象 + 关系 + 动作”理念启发，将业务问题映射为受控的 Ontology 计划，再由确定性代码生成参数化 SQL。
+一个面向零售经营分析的语义层与 Agent 系统。项目受 Palantir Ontology 的“业务对象 + 关系 + 动作”理念启发，将业务问题映射为受控的 Ontology 计划，再由确定性代码生成参数化 SQL。
 
 项目包含两条链路：
 
@@ -160,7 +160,7 @@ py web_app.py --port 8787
 
 ## 当前范围与后续方向
 
-当前 MVP 已覆盖：
+当前版本已覆盖：
 
 - 受控自然语言取数
 - 指标定义与基线对比
