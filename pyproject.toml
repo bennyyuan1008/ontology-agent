@@ -30,6 +30,7 @@ py-modules = [
     "agent_pipeline",
     "monitor_scheduler",
     "web_app",
+    "quality_service",
     "run_agent",
     "run_eval",
     "gen_eval",

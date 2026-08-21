@@ -66,6 +66,7 @@ ontology-agent/
 ├── decision_service.py   # Human-confirmation recommendation templates
 ├── agent_pipeline.py     # Monitor → diagnose → recommend → confirm orchestration
 ├── monitor_scheduler.py  # One-shot or interval monitoring runner
+├── quality_service.py    # Ontology, metric, and rule quality checks
 ├── web_app.py            # Zero-dependency control console and HTTP API
 ├── config/
 │   └── ontology_models.example.yaml
@@ -108,6 +109,12 @@ No Oracle connection or model key is required:
 
 ```powershell
 py -m unittest discover -s tests -v
+```
+
+Run the Stage 0 configuration quality check:
+
+```powershell
+py quality_service.py --config config/ontology_models.example.yaml
 ```
 
 ### 4. Run a natural-language query
