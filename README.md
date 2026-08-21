@@ -1,94 +1,183 @@
-# 零售数据语义层（Ontology）与自然语言查询 Agent
+# Ontology Agent
 
-> 预研项目（基于公司测试库·脱敏数据）｜受 Palantir Ontology 启发，用对象模型把企业级复杂库（2.2万张表/14个schema）抽象为业务概念，让 AI Agent 用自然语言直查真实业务数据。
+一个面向零售经营分析的语义层与 Agent MVP。项目受 Palantir Ontology 的“业务对象 + 关系 + 动作”理念启发，将业务问题映射为受控的 Ontology 计划，再由确定性代码生成参数化 SQL。
 
-## 核心架构：LLM 只做语义理解，SQL 由确定性代码生成
+项目包含两条链路：
 
+```text
+自然语言查询：问题 → 语义计划 → 计划校验 → 参数化 SQL → 只读查询 → 结果
+
+异常诊断闭环：监测规则 → 指标快照 → 证据补查 → 原因假设 → 待确认建议 → 任务/审计
 ```
-用户提问 → ①意图识别(规则) → ②Ontology规划(LLM，输出JSON) → ③确定性翻译(引擎→SQL)
-        → ④安全校验 → ⑤只读执行(Oracle) → ⑥结果回答
-        执行失败 → 带错误信息回退重规划(≤2次)
+
+## 设计原则
+
+- LLM 只负责语义理解、规划和表达，不直接生成或执行 SQL。
+- SQL 只能访问配置中声明的对象、属性和关联关系。
+- 指标口径、退货处理、默认过滤和派生公式由配置/代码固定。
+- 数据源只读；经营动作默认不自动执行，必须经过人工确认。
+- 诊断调度默认使用离线模板，避免业务事实未经确认发送到外部模型。
+
+## 架构
+
+```mermaid
+flowchart LR
+    Q[自然语言问题] --> P[LLM 输出 Ontology JSON]
+    P --> V[计划白名单校验]
+    V --> T[确定性 SQL 翻译]
+    T --> S[绑定参数与安全检查]
+    S --> O[(Oracle/SQLite 只读)]
+    O --> A[结果回答]
+
+    R[监测调度] --> M[指标与规则]
+    M --> O
+    M --> E[确定性证据补查]
+    E --> D[结构化诊断]
+    D --> C[待确认建议]
+    C --> H[控制台人工确认]
+    H --> DB[(SQLite 控制库)]
 ```
 
-- **搜索空间**：LLM 只在 6 个业务对象（Order/OrderItem/Product/Store/Inventory/Member）里选，不接触裸表
-- **口径锁死**：销售额/毛利/退货等口径写在对象定义层（`type=0`、退货取负），翻译代码无发挥空间
-- **天然安全**：对象模型不暴露手机号/身份证等敏感字段——物理表有，语义层没有，LLM 无从查询
+## Ontology 对象
+
+示例配置包含以下业务对象：
+
+| Object | 说明 |
+|---|---|
+| `Order` | 销售单 |
+| `OrderItem` | 销售明细 |
+| `Product` | 商品 |
+| `Store` | 门店 |
+| `Inventory` | 库存 |
+| `Member` | 会员安全字段 |
+
+用户不需要在问题中显式说出 Object。Agent 会将业务语言映射到对象、属性、关联、过滤条件和聚合。如果问题涉及配置外的领域，例如天气、物流或排班，当前系统会拒绝或提示 Ontology 未覆盖。
 
 ## 目录结构
 
-```
+```text
 ontology-agent/
-├── README.md                  # 本文件
-├── LICENSE                    # MIT
-├── pyproject.toml             # 项目元数据与依赖
-├── requirements.txt           # 依赖清单（pip install -r requirements.txt）
-├── .gitignore
-├── run_agent.py               # ★ 自然语言查询入口（NL → 规划 → SQL → 结果）
-├── run_eval.py                # ★ 评测入口（跑评测集 → 四项指标，支持 --blind/--coverage）
-├── query_engine.py            # 语义查询引擎（规划JSON → SQL 确定性翻译 + 只读执行）
+├── query_engine.py       # Ontology 计划校验、确定性 SQL 翻译、只读执行
+├── run_agent.py          # 自然语言查询入口
+├── metric_service.py     # 指标、时间窗口、基线、维度拆解
+├── monitor_service.py    # 异常规则、去重、SQLite 控制面
+├── evidence_service.py   # 白名单证据补查
+├── diagnosis_agent.py    # 结构化原因假设与证据 ID 校验
+├── decision_service.py   # 待人工确认的建议模板
+├── agent_pipeline.py     # 监测 → 诊断 → 建议 → 确认编排
+├── monitor_scheduler.py  # 单次/周期监测入口
+├── web_app.py            # 零依赖控制台与 HTTP API
 ├── config/
-│   └── ontology_models.example.yaml  # 对象模型定义（匿名化示例模板；真实映射在内部环境维护）
-├── eval/
-│   └── README.md              # 评测方法论与复现路径（真实评测数据不随仓库分发）
-├── tests/
-│   └── test_e2e.py            # 端到端冒烟测试（9 用例）
-├── tools/
-│   └── schema_inventory.py    # 数据库盘点工具（表清单/字段/行数）
-└── local/ 参考                 # 本地敏感文件（gitignore，不入库）
+│   └── ontology_models.example.yaml
+├── tests/                # 离线单元与集成测试
+├── tools/                # 数据盘点工具
+└── local/                # 本地凭证与真实配置，不提交 Git
 ```
 
 ## 快速开始
 
+### 1. 安装依赖
+
 ```powershell
-# 1. 安装依赖：pip install -r requirements.txt（含 pyyaml / python-oracledb 等）
-# 2. 准备 local/ 下的 oracle_conn.local.json（Oracle 只读凭证）与 deepseek_key.local（DeepSeek Key）
-# 3. 在项目目录下运行：
-
-py run_agent.py --question "2026年3月销售额最高的5家门店？"
-# 规划: {...}   SQL: SELECT ...   ✅ 结果（示例）：门店A: 100.5万 ...
-
-py run_eval.py        # 跑评测集，输出四项指标（评测数据需先按 eval/README.md 在内部环境生成）
-py tests/test_e2e.py  # 端到端冒烟测试（9 用例）
-py tools/schema_inventory.py --oracle ""   # 盘点（凭证从 local/ 读取，可加 --owner POS）
-py gen_eval.py        # 在内部环境生成黄金评测集（需连接脱敏测试库）
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
 ```
 
-## 当前评测指标（R1 迭代后，2026-08-15）
+### 2. 准备本地配置
 
-| 指标 | 设计集(17查询) | 盲测池(7查询·样本外) |
-|---|---|---|
-| 规划正确率（语义等价） | **88%** | **86%**（严格） |
-| 执行成功率 | **100%** | **100%** |
-| 结果正确率（语义等价） | **88%** | **86%**（严格）/ 实质 100% |
-| 拒绝正确率（非法/越权） | **100%** | —（无拒绝用例） |
+```powershell
+Copy-Item config/ontology_models.example.yaml config/ontology_models.yaml
+```
 
-> 迭代史：29%（首轮严格对比）→ 76%（口径规范化）→ **88%**（few-shot+领域知识）。
-> 盲测与设计差距仅 2pt = **样本外泛化证据**；盲测第6条为"答案正确但实现路径不同"（agent 用 MAX 聚合 vs 黄金点查），严格对比记差异。
-> 迭代过程详见 `docs/迭代日志.md`（R0/R1 记录）。
+然后将 `config/ontology_models.yaml` 中的示例表名、字段名和口径映射替换为自己的数据源配置。真实配置、Oracle 凭证和模型 Key 只放在 `local/`，不要提交到 GitHub。
 
-## 评测方法论（样本外评估）
+Oracle 连接文件示例结构：
 
-- **设计集/盲测集分离**：`run_eval.py`（设计集）与 `--blind`（盲测池）分别报指标
-- **覆盖矩阵**：`run_eval.py --coverage` 输出 对象×类别×算子 使用频次，找覆盖空洞补题
-- **盲测池生长**：真实用户/demo 中出现的新问题，随时加入 `eval/blind_pool.json`（先定义期望答案），下次迭代后跑一遍
-- **语义等价判定**：忽略 order_by、filters 顺序无关、结果行序无关、数字保留2位小数
+```json
+{
+  "user": "readonly_user",
+  "password": "replace-me",
+  "dsn": "host:1521/service"
+}
+```
 
-## 口径来源（权威）
+### 3. 离线测试
 
-内部帆软报表模板库（公司资产，不在本仓库）中的报表 SQL：
-- 销售额 = 明细 `AMT` 汇总，退货单（type=1/2/4）取负相抵
-- 单类型：0=正常 / 1=退货 / 2=冲销 / 16=特殊单（排除）
-- 门店 `org_form='2'`；店名/品类名取多语言表（zh_CN）
+不需要 Oracle 或模型 Key：
 
-## 安全与合规
+```powershell
+py -m unittest discover -s tests -v
+```
 
-- 只读连接 + 只读事务 + SQL 黑名单 + 强制 LIMIT
-- 对象模型不暴露 PII；非法/越权问题一律拒绝（评测集含真实用例）
-- 开源仓库只含代码/配置/评测集；`local/` 凭证与报表模板资产不纳入
+### 4. 自然语言查询
 
-## 演进路线
+需要本地真实配置、只读 Oracle 连接和 `DEEPSEEK_API_KEY`（环境变量或 `local/deepseek_key.local`）：
 
-- [ ] v1.1：评测驱动迭代（few-shot/温度调优，目标 90%+）
-- [ ] v1.2：与 REP_* 报表表交叉对账（黄金结果外部背书）
-- [ ] v2：导出脱敏快照到 SQLite（离线演示/开源数据）
-- [ ] v3：语义查询能力封装为 MCP Server；Actions 动作层（带校验的写操作）
+```powershell
+py run_agent.py --question "2026年3月销售额最高的5家门店？"
+```
+
+### 5. 监测与控制台
+
+启用并校准本地监测规则后运行一次：
+
+```powershell
+py monitor_scheduler.py `
+  --rule inventory_quantity_below_7m `
+  --current-window '{"start":"2026-03-01","end":"2026-03-31"}'
+```
+
+启动控制台：
+
+```powershell
+py web_app.py --port 8787
+```
+
+浏览器打开：<http://127.0.0.1:8787/>
+
+控制 API：
+
+- `GET /health`
+- `GET /anomalies`
+- `GET /recommendations`
+- `GET /tasks`
+- `POST /recommendations/{id}/confirm`
+- `POST /anomalies/{id}/feedback`
+
+控制库默认是 `local/monitor_control.sqlite3`，只保存规则、异常、建议、任务、反馈和审计，不写回业务 Oracle。
+
+## 安全边界
+
+当前代码包含多层拒绝：
+
+1. 入口拦截删除、修改、敏感字段等危险请求。
+2. 计划校验限制 Object、Property、Link、算子、聚合函数和查询上限。
+3. SQL 只允许 `SELECT`，并使用绑定参数。
+4. Oracle 查询尝试设置只读事务。
+5. 会员手机号、身份证等字段不进入公开 Ontology。
+6. 建议只有人工采纳后才创建任务，不自动执行库存或订单变更。
+
+## 当前范围与后续方向
+
+当前 MVP 已覆盖：
+
+- 受控自然语言取数
+- 指标定义与基线对比
+- 固定阈值/相对变化异常监测
+- 门店/SKU 维度扫描
+- 确定性证据补查
+- 结构化诊断和待确认建议
+- 页面确认、任务、反馈和审计
+
+后续可继续建设：
+
+- 天气、物流、排班等新的 Ontology 对象
+- 更严格的“问题语义覆盖检查”
+- 任务状态流转和权限认证
+- 脱敏快照与离线演示数据
+- MCP/API 服务化与生产调度
+
+## License
+
+MIT

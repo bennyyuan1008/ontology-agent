@@ -73,7 +73,13 @@ def load_config(path: str) -> dict:
     derived = {}
     for d in cfg.get("derived_properties", []):
         derived.setdefault(d["object"], {})[d["name"]] = d["formula"]
-    return {"objects": objs, "derived": derived, "rules": cfg.get("business_rules", [])}
+    return {
+        "objects": objs,
+        "derived": derived,
+        "rules": cfg.get("business_rules", []),
+        "metrics": {m["id"]: m for m in cfg.get("metrics", [])},
+        "monitor_rules": {r["id"]: r for r in cfg.get("monitor_rules", [])},
+    }
 
 
 # ---------- 方言抽象 ----------
@@ -81,9 +87,13 @@ def load_config(path: str) -> dict:
 DIALECT = "sqlite"  # sqlite | oracle，由 CLI --dialect 覆盖
 
 
-def date_literal(value: str) -> str:
+def date_literal(value: str, placeholder: str = None) -> str:
     if DIALECT == "oracle":
+        if placeholder:
+            return f"TO_DATE({placeholder},'YYYY-MM-DD')"
         return f"TO_DATE('{value}','YYYY-MM-DD')"
+    if placeholder:
+        return placeholder
     return f"'{value}'"
 
 
@@ -148,24 +158,28 @@ def _op_sql(op: str) -> str:
             "<=": "<=", "like": "LIKE"}.get(op, op)
 
 
-def _value_sql(v, ptype: str) -> str:
+def _value_sql(v, ptype: str, params: dict = None) -> str:
+    if params is not None:
+        name = f":p{len(params)}"
+        params[name[1:]] = v
+        return date_literal(v, name) if ptype == "date" else name
     if ptype == "date":
         return date_literal(v)
     return f"'{v}'"
 
 
-def _filter_sql(cfg: dict, obj_name: str, f: dict) -> str:
+def _filter_sql(cfg: dict, obj_name: str, f: dict, params: dict = None) -> str:
     owner, expr, ptype, db_type = _resolve_prop(cfg, obj_name, _prop_key(f))
     lhs = _cast(expr, db_type)
     op = _op_sql(f["op"])
     v = f["value"]
     if f["op"] == "between":
         a, b = v
-        return f"{lhs} BETWEEN {_value_sql(a, ptype)} AND {_value_sql(b, ptype)}"
+        return f"{lhs} BETWEEN {_value_sql(a, ptype, params)} AND {_value_sql(b, ptype, params)}"
     if f["op"] == "in":
-        vals = ", ".join(_value_sql(x, ptype) for x in v)
+        vals = ", ".join(_value_sql(x, ptype, params) for x in v)
         return f"{lhs} IN ({vals})"
-    return f"{lhs} {op} {_value_sql(v, ptype)}"
+    return f"{lhs} {op} {_value_sql(v, ptype, params)}"
 
 
 def _prop_key(entry) -> str:
@@ -193,7 +207,117 @@ def _find_prop_cfg(cfg: dict, obj_name: str, prop: str) -> dict:
     return obj["props"].get(prop, {})
 
 
-def translate(cfg: dict, plan: dict) -> str:
+ALLOWED_OPS = {"=", "!=", ">", "<", ">=", "<=", "between", "in", "like"}
+ALLOWED_FUNCS = {"COUNT", "SUM", "AVG", "MAX", "MIN"}
+
+
+def _validate_value(value, ptype: str):
+    if isinstance(value, bool) or value is None:
+        raise ValueError("筛选值必须是字符串或数字")
+    if isinstance(value, (list, tuple, dict)):
+        raise ValueError("筛选值类型不合法")
+    if ptype in ("date", "string_date"):
+        if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+            raise ValueError("日期必须使用 YYYY-MM-DD")
+    elif not isinstance(value, (str, int, float)):
+        raise ValueError("筛选值类型不合法")
+    if isinstance(value, str) and ("\x00" in value or "--" in value or "/*" in value or "*/" in value):
+        raise ValueError("筛选值包含禁止的 SQL 控制字符")
+
+
+def validate_plan(cfg: dict, plan: dict):
+    """严格校验 LLM 规划，确保只能访问 Ontology 白名单。"""
+    if not isinstance(plan, dict):
+        raise ValueError("规划必须是 JSON 对象")
+    if "reject" in plan:
+        return
+    obj_name = plan.get("object")
+    if obj_name not in cfg["objects"]:
+        raise ValueError(f"未知对象：{obj_name}")
+    if not isinstance(plan.get("filters", []), list):
+        raise ValueError("filters 必须是数组")
+    for f in plan.get("filters", []):
+        if not isinstance(f, dict) or "property" not in f or "op" not in f or "value" not in f:
+            raise ValueError("过滤条件缺少 property/op/value")
+        if f["op"] not in ALLOWED_OPS:
+            raise ValueError(f"不支持的过滤算子：{f['op']}")
+        _, _, ptype, _ = _resolve_prop(cfg, obj_name, _prop_key(f))
+        value = f["value"]
+        if f["op"] == "between":
+            if not isinstance(value, (list, tuple)) or len(value) != 2:
+                raise ValueError("between 必须包含两个值")
+            for v in value:
+                _validate_value(v, ptype)
+        elif f["op"] == "in":
+            if not isinstance(value, (list, tuple)) or not value:
+                raise ValueError("in 必须包含非空数组")
+            for v in value:
+                _validate_value(v, ptype)
+        else:
+            _validate_value(value, ptype)
+
+    agg = plan.get("aggregate")
+    if agg:
+        if not isinstance(agg, dict):
+            raise ValueError("aggregate 必须是对象")
+        if agg.get("derived"):
+            if agg["derived"] not in cfg["derived"].get(obj_name, {}):
+                raise ValueError(f"对象 {obj_name} 没有派生属性 {agg['derived']}")
+        else:
+            if agg.get("func") not in ALLOWED_FUNCS:
+                raise ValueError(f"不支持的聚合函数：{agg.get('func')}")
+            if agg.get("func") != "COUNT" and "property" not in agg:
+                raise ValueError("非 COUNT 聚合必须指定 property")
+            if "property" in agg:
+                _resolve_prop(cfg, obj_name, agg["property"])
+            sign = agg.get("sign")
+            if sign:
+                if agg.get("func") != "SUM" or "property" not in agg:
+                    raise ValueError("sign 只支持 SUM(property)")
+                if not isinstance(sign, dict) or "link" not in sign or "property" not in sign:
+                    raise ValueError("aggregate.sign 配置不完整")
+                _resolve_prop(cfg, obj_name, f"{sign['link']}.{sign['property']}")
+                if not all(isinstance(x, (int, float)) for x in sign.get("negative_values", [])):
+                    raise ValueError("sign.negative_values 必须是数字数组")
+                if not all(isinstance(x, (int, float)) for x in sign.get("exclude_values", [])):
+                    raise ValueError("sign.exclude_values 必须是数字数组")
+
+    for key in ("properties", "group_by"):
+        if not isinstance(plan.get(key, []), list):
+            raise ValueError(f"{key} 必须是数组")
+    for p in plan.get("properties", []):
+        if p != "*":
+            _resolve_prop(cfg, obj_name, p)
+    for g in plan.get("group_by", []):
+        if not isinstance(g, dict) or "property" not in g:
+            raise ValueError("group_by 条目缺少 property")
+        _resolve_prop(cfg, obj_name, _prop_key(g))
+        if g.get("bucket") not in (None, "month"):
+            raise ValueError("只支持 month 分桶")
+    if plan.get("having"):
+        if not isinstance(plan["having"], list):
+            raise ValueError("having 必须是数组")
+        for h in plan["having"]:
+            if h.get("func") not in ALLOWED_FUNCS or h.get("op") not in ALLOWED_OPS - {"between", "in", "like"}:
+                raise ValueError("having 条件不合法")
+            _resolve_prop(cfg, obj_name, _prop_key(h))
+            _validate_value(h.get("value"), None)
+    if plan.get("order_by"):
+        ob = plan["order_by"]
+        if (not isinstance(ob, dict) or "property" not in ob or
+                ob.get("dir", "ASC") not in ("ASC", "DESC")):
+            raise ValueError("order_by 不合法")
+        if ob.get("property") not in ("agg_result", None):
+            _resolve_prop(cfg, obj_name, _prop_key(ob))
+    limit = plan.get("limit", 50)
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+        raise ValueError("limit 必须是正整数")
+
+
+def translate(cfg: dict, plan: dict, params: dict = None) -> str:
+    validate_plan(cfg, plan)
+    if "reject" in plan:
+        raise ValueError("拒绝规划不能翻译为 SQL")
     obj_name = plan["object"]
     obj = cfg["objects"][obj_name]
     alias = obj_name
@@ -207,13 +331,21 @@ def translate(cfg: dict, plan: dict) -> str:
     for g in plan.get("group_by", []):
         if "." in _prop_key(g):
             used_links.add(_prop_key(g).split(".", 1)[0])
+    aggregate_property = (plan.get("aggregate") or {}).get("property")
+    if aggregate_property and "." in aggregate_property:
+        used_links.add(aggregate_property.split(".", 1)[0])
+    if plan.get("aggregate", {}).get("sign"):
+        used_links.add(plan["aggregate"]["sign"]["link"])
     for lnk in used_links:
         link = obj["links"][lnk]
         tgt = cfg["objects"][link["to"]]
-        joins.append(
+        join_sql = (
             f'JOIN {_from(tgt["table"], lnk)} ON {_col(alias, link["via"])}'
             f' = {_col(lnk, _pk_of(tgt))}'
         )
+        if tgt.get("filter"):
+            join_sql += " AND " + tgt["filter"].replace("{t}", f'"{lnk}"')
+        joins.append(join_sql)
 
     sel_cols = []
     if plan.get("aggregate"):
@@ -226,7 +358,23 @@ def translate(cfg: dict, plan: dict) -> str:
             func = agg["func"]
             if "property" in agg:
                 owner, expr, _, db_type = _resolve_prop(cfg, obj_name, agg["property"])
-                sel_cols.append(f'{func}({_cast(expr, db_type)}) AS agg_result')
+                measure = _cast(expr, db_type)
+                sign = agg.get("sign")
+                if sign:
+                    _, sign_expr, _, sign_db_type = _resolve_prop(
+                        cfg, obj_name, f'{sign["link"]}.{sign["property"]}')
+                    sign_expr = _cast(sign_expr, sign_db_type)
+                    cases = []
+                    negative = sign.get("negative_values", [])
+                    excluded = sign.get("exclude_values", [])
+                    if negative:
+                        cases.append(f'{sign_expr} IN ({", ".join(str(x) for x in negative)}) THEN -({measure})')
+                    if excluded:
+                        cases.append(f'{sign_expr} IN ({", ".join(str(x) for x in excluded)}) THEN 0')
+                    signed = "CASE WHEN " + " WHEN ".join(cases) + f' ELSE {measure} END'
+                    sel_cols.append(f'{func}({signed}) AS agg_result')
+                else:
+                    sel_cols.append(f'{func}({measure}) AS agg_result')
             else:
                 sel_cols.append(f'{func}(*) AS agg_result')  # COUNT 可无属性
     else:
@@ -241,7 +389,7 @@ def translate(cfg: dict, plan: dict) -> str:
     group_by_exprs = []   # GROUP BY 子句用的表达式
     select_additions = []  # 需要追加到 SELECT 的展示表达式
     group_exprs = {}      # prop_key -> GROUP BY 表达式（ORDER BY 复用）
-    for g in plan.get("group_by", []):
+    for group_idx, g in enumerate(plan.get("group_by", [])):
         key = _prop_key(g)
         owner, expr, ptype, db_type = _resolve_prop(cfg, obj_name, key)
         disp = _cast(expr, db_type)
@@ -253,11 +401,11 @@ def translate(cfg: dict, plan: dict) -> str:
             tgt = cfg["objects"][tgt_name]
             gexpr = _col(owner, _find_prop_cfg(cfg, obj_name, key).get("group_key") or _pk_of(tgt))
             group_exprs[key] = gexpr
-            select_additions.append(disp)
+            select_additions.append(f'{disp} AS group_{group_idx}')
         else:
             gexpr = disp
             group_exprs[key] = gexpr
-            select_additions.append(gexpr)
+            select_additions.append(f'{gexpr} AS group_{group_idx}')
         group_by_exprs.append(gexpr)
     group_sql = group_by_exprs
     for g in select_additions:
@@ -267,7 +415,8 @@ def translate(cfg: dict, plan: dict) -> str:
     having_sql = []
     for h in plan.get("having", []):
         owner, expr, ptype, db_type = _resolve_prop(cfg, obj_name, _prop_key(h))
-        having_sql.append(f'{h["func"]}({_cast(expr, db_type)}) {_op_sql(h["op"])} {h["value"]}')
+        hvalue = _value_sql(h["value"], ptype, params)
+        having_sql.append(f'{h["func"]}({_cast(expr, db_type)}) {_op_sql(h["op"])} {hvalue}')
 
     order_sql = ""
     if plan.get("order_by"):
@@ -290,7 +439,7 @@ def translate(cfg: dict, plan: dict) -> str:
     sql = f"SELECT {select} FROM {_from(table, alias)}"
     if joins:
         sql += " " + " ".join(joins)
-    where = [_filter_sql(cfg, obj_name, f) for f in plan.get("filters", [])]
+    where = [_filter_sql(cfg, obj_name, f, params) for f in plan.get("filters", [])]
     if obj.get("filter"):  # 对象级默认过滤（如门店 org_form='2'）
         where.append(obj["filter"].replace("{t}", f'"{alias}"'))
     if where:
@@ -301,6 +450,13 @@ def translate(cfg: dict, plan: dict) -> str:
         sql += " HAVING " + " AND ".join(having_sql)
     sql += order_sql + limit_clause(limit)
     return sql
+
+
+def translate_bound(cfg: dict, plan: dict):
+    """返回参数化 SQL 与 bind 参数；Agent/服务端执行必须使用此入口。"""
+    params = {}
+    sql = translate(cfg, plan, params=params)
+    return sql, params
 
 
 def _pk_of(obj: dict) -> str:
@@ -321,15 +477,15 @@ def check_safety(sql: str):
         raise ValueError("检测到禁止的 SQL 操作")
 
 
-def execute_sqlite(db_path: str, sql: str):
+def execute_sqlite(db_path: str, sql: str, bind_params: dict = None):
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     con.row_factory = sqlite3.Row
-    rows = con.execute(sql).fetchall()
+    rows = con.execute(sql, bind_params or {}).fetchall()
     con.close()
     return [dict(r) for r in rows]
 
 
-def execute_oracle(cfg: str, sql: str):
+def execute_oracle(cfg: str, sql: str, bind_params: dict = None):
     try:
         import oracledb
     except ImportError:
@@ -350,7 +506,7 @@ def execute_oracle(cfg: str, sql: str):
         cur.execute("ALTER SESSION SET TRANSACTION READ ONLY")
     except Exception:
         pass
-    cur.execute(sql)
+    cur.execute(sql, bind_params or {})
     cols = [d[0] for d in cur.description] if cur.description else []
     rows = [dict(zip(cols, r)) for r in cur.fetchall()]
     cur.close()
@@ -358,10 +514,10 @@ def execute_oracle(cfg: str, sql: str):
     return rows
 
 
-def execute(dialect: str, sql: str, db_path: str = None, oracle_cfg: str = None):
+def execute(dialect: str, sql: str, db_path: str = None, oracle_cfg: str = None, bind_params: dict = None):
     if dialect == "oracle":
-        return execute_oracle(oracle_cfg, sql)
-    return execute_sqlite(db_path, sql)
+        return execute_oracle(oracle_cfg, sql, bind_params=bind_params)
+    return execute_sqlite(db_path, sql, bind_params=bind_params)
 
 
 def main():
@@ -376,13 +532,14 @@ def main():
 
     cfg = load_config(CONFIG_PATH)
     plan = json.loads(args.plan)
-    sql = translate(cfg, plan)
+    sql, bind_params = translate_bound(cfg, plan)
     check_safety(sql)
     print("SQL:", sql)
     oracle_cfg = _load_oracle_cfg(args.oracle)
     if args.dialect == "oracle" and not oracle_cfg:
         sys.exit("Oracle 模式需要 --oracle 连接串或本地 oracle_conn.local.json")
-    rows = execute(args.dialect, sql, db_path=args.db, oracle_cfg=oracle_cfg)
+    rows = execute(args.dialect, sql, db_path=args.db, oracle_cfg=oracle_cfg,
+                   bind_params=bind_params)
     print(f"行数: {len(rows)}")
     for r in rows[:20]:
         print(r)

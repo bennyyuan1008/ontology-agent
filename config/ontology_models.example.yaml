@@ -95,6 +95,7 @@ objects:
     properties:
       qty:      {column: QTY,      db_type: number,    alias: [库存量, 库存数]}
       lock_qty: {column: LOCK_QTY, db_type: number,    alias: [锁定库存]}
+      online_qty: {column: ONLINE_QTY, db_type: number, alias: [线上可售库存, 可售库存]}
     links:
       product: {to: Product, via: SKU_ID}
       store:   {to: Store,   via: STORE_ID}
@@ -137,3 +138,126 @@ business_rules:
   - "门店维度：stores 表 STORE_TYPE='2' 为门店，店名来自多语言表(zh_CN)"
   - "商品名：明细冗余字段 SKU_NAME；品类名来自品类多语言表"
   - "非法/越权问题（删表、改数据、查询会员手机号/身份证等敏感字段）一律拒绝，不生成SQL"
+
+metrics:
+  - id: sales_amount
+    name: 销售额（净额）
+    status: implemented
+    version: "1.0"
+    object: OrderItem
+    aggregate:
+      func: SUM
+      property: amount
+      sign: {link: order, property: type, negative_values: [1, 2, 4], exclude_values: [16]}
+    time: {link: order, property: order_date}
+    dimensions: [order.store.store_name, product.category_name, product.product_name]
+    grain: day
+    freshness: daily
+    unit: CNY
+    note: 明细金额汇总，退货/冲销取负，特殊单 type=16 排除。
+
+  - id: order_count
+    name: 销售单数
+    status: implemented
+    version: "1.0"
+    object: Order
+    aggregate: {func: COUNT}
+    time: {property: order_date}
+    dimensions: [store.store_name, channel]
+    grain: day
+    freshness: daily
+    unit: count
+    note: 按业务口径不区分单据类型。
+
+  - id: average_order_value
+    name: 客单价
+    status: implemented
+    version: "1.0"
+    object: Order
+    aggregate: {derived: 客单价}
+    time: {property: order_date}
+    dimensions: [store.store_name, channel]
+    grain: day
+    freshness: daily
+    unit: CNY
+    note: 实付总额除以销售单数。
+
+  - id: sku_quantity
+    name: SKU 销量
+    status: implemented
+    version: "1.0"
+    object: OrderItem
+    aggregate:
+      func: SUM
+      property: qty
+      sign: {link: order, property: type, negative_values: [1, 2, 4], exclude_values: [16]}
+    time: {link: order, property: order_date}
+    dimensions: [product.product_name, product.category_name, order.store.store_name]
+    grain: day
+    freshness: daily
+    unit: quantity
+    note: 销售数量按退货/冲销取负，特殊单排除。
+
+  - id: inventory_quantity
+    name: 库存量
+    status: implemented
+    version: "1.0"
+    object: Inventory
+    aggregate: {func: SUM, property: qty}
+    dimensions: [product.product_name, store.store_name]
+    grain: snapshot
+    freshness: snapshot
+    unit: quantity
+    note: 当前库存快照，粒度为门店与 SKU。
+
+  - id: available_inventory_quantity
+    name: 可售库存
+    status: implemented
+    version: "1.0"
+    object: Inventory
+    aggregate: {func: SUM, property: online_qty}
+    dimensions: [product.product_name, store.store_name]
+    grain: snapshot
+    freshness: snapshot
+    unit: quantity
+    note: 使用库存表 ONLINE_QTY。
+
+  - id: stockout_rate
+    name: 缺货率
+    status: planned
+    version: "1.0"
+    object: Inventory
+    grain: snapshot
+    freshness: snapshot
+    unit: ratio
+    note: 需确认缺货判定和商品分母范围。
+
+  - id: inventory_cover_days
+    name: 库存覆盖天数
+    status: planned
+    version: "1.0"
+    object: Inventory
+    grain: snapshot
+    freshness: snapshot
+    unit: day
+    note: 需确认使用近 N 日 SKU 销量作为分母，并处理零销量商品。
+
+monitor_rules:
+  - id: sales_amount_day_down_20
+    metric_id: sales_amount
+    rule_type: relative_change
+    direction: down
+    threshold: 0.20
+    severity: P1
+    schedule: daily
+    enabled: false
+    note: 日销售额相对基线下降 20% 以上。
+  - id: inventory_quantity_below_7m
+    metric_id: inventory_quantity
+    rule_type: fixed_threshold
+    direction: below
+    threshold: 7000000
+    severity: P1
+    schedule: daily
+    enabled: false
+    note: 总库存低于校准阈值；上线前需按门店/商品范围拆分。

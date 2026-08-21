@@ -22,6 +22,14 @@ dependencies = [
 [tool.setuptools]
 py-modules = [
     "query_engine",
+    "metric_service",
+    "monitor_service",
+    "diagnosis_agent",
+    "evidence_service",
+    "decision_service",
+    "agent_pipeline",
+    "monitor_scheduler",
+    "web_app",
     "run_agent",
     "run_eval",
     "gen_eval",

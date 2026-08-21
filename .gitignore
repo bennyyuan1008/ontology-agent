@@ -21,6 +21,7 @@ libs/
 __pycache__/
 *.pyc
 .venv/
+.runtime/
 .env
 
 # 运行日志

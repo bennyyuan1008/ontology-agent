@@ -194,17 +194,18 @@ def node_plan(state: dict, fix_error: str = None) -> dict:
 def node_gen_sql(state: dict) -> dict:
     try:
         cfg = engine.load_config(CONFIG_PATH)
-        sql = engine.translate(cfg, state["plan"])
+        sql, bind_params = engine.translate_bound(cfg, state["plan"])
         engine.check_safety(sql)
-        return {**state, "sql": sql, "error": ""}
+        return {**state, "sql": sql, "bind_params": bind_params, "error": ""}
     except Exception as e:
-        return {**state, "sql": "", "error": str(e)}
+        return {**state, "sql": "", "bind_params": {}, "error": str(e)}
 
 
 def node_execute(state: dict) -> dict:
     try:
         ocfg = engine._load_oracle_cfg(None)
-        rows = engine.execute("oracle", state["sql"], oracle_cfg=ocfg)
+        rows = engine.execute("oracle", state["sql"], oracle_cfg=ocfg,
+                              bind_params=state.get("bind_params") or {})
         return {**state, "rows": rows, "error": ""}
     except Exception as e:
         return {**state, "rows": [], "error": str(e)}
