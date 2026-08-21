@@ -1,82 +1,82 @@
 # Ontology Agent
 
-一个面向零售经营分析的语义层与 Agent 系统。项目受 Palantir Ontology 的“业务对象 + 关系 + 动作”理念启发，将业务问题映射为受控的 Ontology 计划，再由确定性代码生成参数化 SQL。
+An ontology-driven agent system for retail operations analytics. Inspired by Palantir Ontology's business-object, relationship, and action model, the project maps business questions to controlled Ontology plans and generates parameterized SQL through deterministic code.
 
-项目包含两条链路：
+The project contains two connected flows:
 
 ```text
-自然语言查询：问题 → 语义计划 → 计划校验 → 参数化 SQL → 只读查询 → 结果
+Natural-language query: question → semantic plan → plan validation → parameterized SQL → read-only query → answer
 
-异常诊断闭环：监测规则 → 指标快照 → 证据补查 → 原因假设 → 待确认建议 → 任务/审计
+Anomaly decision flow: monitoring rule → metric snapshot → evidence lookup → diagnosis hypothesis → pending recommendation → task/audit
 ```
 
-## 设计原则
+## Design Principles
 
-- LLM 只负责语义理解、规划和表达，不直接生成或执行 SQL。
-- SQL 只能访问配置中声明的对象、属性和关联关系。
-- 指标口径、退货处理、默认过滤和派生公式由配置/代码固定。
-- 数据源只读；经营动作默认不自动执行，必须经过人工确认。
-- 诊断调度默认使用离线模板，避免业务事实未经确认发送到外部模型。
+- The LLM handles semantic understanding, planning, and response wording; it does not directly write or execute SQL.
+- SQL can only access objects, properties, and relationships declared in the Ontology configuration.
+- Metric definitions, return handling, default filters, and derived formulas are fixed in configuration or deterministic code.
+- Business data access is read-only; operational actions require human confirmation.
+- Scheduled diagnosis uses an offline template by default, so business facts are not sent to an external model without explicit integration.
 
-## 架构
+## Architecture
 
 ```mermaid
 flowchart LR
-    Q[自然语言问题] --> P[LLM 输出 Ontology JSON]
-    P --> V[计划白名单校验]
-    V --> T[确定性 SQL 翻译]
-    T --> S[绑定参数与安全检查]
-    S --> O[(Oracle/SQLite 只读)]
-    O --> A[结果回答]
+    Q[Natural-language question] --> P[LLM outputs Ontology JSON]
+    P --> V[Whitelist plan validation]
+    V --> T[Deterministic SQL translation]
+    T --> S[Bind parameters and safety checks]
+    S --> O[(Oracle/SQLite read-only data)]
+    O --> A[Formatted answer]
 
-    R[监测调度] --> M[指标与规则]
+    R[Monitor scheduler] --> M[Metrics and rules]
     M --> O
-    M --> E[确定性证据补查]
-    E --> D[结构化诊断]
-    D --> C[待确认建议]
-    C --> H[控制台人工确认]
-    H --> DB[(SQLite 控制库)]
+    M --> E[Deterministic evidence lookup]
+    E --> D[Structured diagnosis]
+    D --> C[Pending recommendation]
+    C --> H[Human confirmation in control console]
+    H --> DB[(SQLite control store)]
 ```
 
-## Ontology 对象
+## Ontology Objects
 
-示例配置包含以下业务对象：
+The example configuration includes these business objects:
 
-| Object | 说明 |
+| Object | Description |
 |---|---|
-| `Order` | 销售单 |
-| `OrderItem` | 销售明细 |
-| `Product` | 商品 |
-| `Store` | 门店 |
-| `Inventory` | 库存 |
-| `Member` | 会员安全字段 |
+| `Order` | Sales order |
+| `OrderItem` | Sales order line |
+| `Product` | Product/SKU |
+| `Store` | Store or retail location |
+| `Inventory` | Inventory snapshot |
+| `Member` | Member fields approved for analytics |
 
-用户不需要在问题中显式说出 Object。Agent 会将业务语言映射到对象、属性、关联、过滤条件和聚合。如果问题涉及配置外的领域，例如天气、物流或排班，当前系统会拒绝或提示 Ontology 未覆盖。
+Users do not need to mention an Object name explicitly. The agent maps business language to objects, properties, relationships, filters, and aggregations. Questions involving domains outside the configuration—such as weather, logistics, or staffing—are rejected or reported as unsupported by the current Ontology.
 
-## 目录结构
+## Repository Structure
 
 ```text
 ontology-agent/
-├── query_engine.py       # Ontology 计划校验、确定性 SQL 翻译、只读执行
-├── run_agent.py          # 自然语言查询入口
-├── metric_service.py     # 指标、时间窗口、基线、维度拆解
-├── monitor_service.py    # 异常规则、去重、SQLite 控制面
-├── evidence_service.py   # 白名单证据补查
-├── diagnosis_agent.py    # 结构化原因假设与证据 ID 校验
-├── decision_service.py   # 待人工确认的建议模板
-├── agent_pipeline.py     # 监测 → 诊断 → 建议 → 确认编排
-├── monitor_scheduler.py  # 单次/周期监测入口
-├── web_app.py            # 零依赖控制台与 HTTP API
+├── query_engine.py       # Ontology plan validation, deterministic SQL, read-only execution
+├── run_agent.py          # Natural-language query entry point
+├── metric_service.py     # Metrics, windows, baselines, and dimension breakdowns
+├── monitor_service.py    # Anomaly rules, deduplication, SQLite control store
+├── evidence_service.py   # Whitelisted deterministic evidence lookup
+├── diagnosis_agent.py    # Structured diagnosis and evidence-ID validation
+├── decision_service.py   # Human-confirmation recommendation templates
+├── agent_pipeline.py     # Monitor → diagnose → recommend → confirm orchestration
+├── monitor_scheduler.py  # One-shot or interval monitoring runner
+├── web_app.py            # Zero-dependency control console and HTTP API
 ├── config/
 │   └── ontology_models.example.yaml
-├── tests/                # 离线单元与集成测试
-├── tools/                # 数据盘点工具
-└── local/                # 本地凭证与真实配置，不提交 Git
+├── tests/                # Offline unit and integration tests
+├── tools/                # Database inspection utilities
+└── local/                # Local credentials and real configuration; never commit
 ```
 
-## 快速开始
+## Quick Start
 
-### 1. 安装依赖
+### 1. Install dependencies
 
 ```powershell
 py -m venv .venv
@@ -84,15 +84,15 @@ py -m venv .venv
 pip install -r requirements.txt
 ```
 
-### 2. 准备本地配置
+### 2. Prepare local configuration
 
 ```powershell
 Copy-Item config/ontology_models.example.yaml config/ontology_models.yaml
 ```
 
-然后将 `config/ontology_models.yaml` 中的示例表名、字段名和口径映射替换为自己的数据源配置。真实配置、Oracle 凭证和模型 Key 只放在 `local/`，不要提交到 GitHub。
+Replace the example table names, column mappings, and business definitions in `config/ontology_models.yaml` for your own data source. Keep real configuration, Oracle credentials, and model keys under `local/`; never commit them to GitHub.
 
-Oracle 连接文件示例结构：
+Example Oracle connection file:
 
 ```json
 {
@@ -102,25 +102,25 @@ Oracle 连接文件示例结构：
 }
 ```
 
-### 3. 离线测试
+### 3. Run offline tests
 
-不需要 Oracle 或模型 Key：
+No Oracle connection or model key is required:
 
 ```powershell
 py -m unittest discover -s tests -v
 ```
 
-### 4. 自然语言查询
+### 4. Run a natural-language query
 
-需要本地真实配置、只读 Oracle 连接和 `DEEPSEEK_API_KEY`（环境变量或 `local/deepseek_key.local`）：
+This requires a real local configuration, a read-only Oracle connection, and `DEEPSEEK_API_KEY` (as an environment variable or in `local/deepseek_key.local`):
 
 ```powershell
-py run_agent.py --question "2026年3月销售额最高的5家门店？"
+py run_agent.py --question "Which five stores had the highest sales in March 2026?"
 ```
 
-### 5. 监测与控制台
+### 5. Run monitoring and open the console
 
-启用并校准本地监测规则后运行一次：
+Enable and calibrate a local monitoring rule before running it:
 
 ```powershell
 py monitor_scheduler.py `
@@ -128,15 +128,15 @@ py monitor_scheduler.py `
   --current-window '{"start":"2026-03-01","end":"2026-03-31"}'
 ```
 
-启动控制台：
+Start the control console:
 
 ```powershell
 py web_app.py --port 8787
 ```
 
-浏览器打开：<http://127.0.0.1:8787/>
+Open <http://127.0.0.1:8787/> in a browser.
 
-控制 API：
+Available control APIs:
 
 - `GET /health`
 - `GET /anomalies`
@@ -145,38 +145,38 @@ py web_app.py --port 8787
 - `POST /recommendations/{id}/confirm`
 - `POST /anomalies/{id}/feedback`
 
-控制库默认是 `local/monitor_control.sqlite3`，只保存规则、异常、建议、任务、反馈和审计，不写回业务 Oracle。
+The control store defaults to `local/monitor_control.sqlite3`. It stores rules, anomalies, recommendations, tasks, feedback, and audit events; it does not write to business tables in Oracle.
 
-## 安全边界
+## Security Boundaries
 
-当前代码包含多层拒绝：
+The code applies multiple rejection and safety layers:
 
-1. 入口拦截删除、修改、敏感字段等危险请求。
-2. 计划校验限制 Object、Property、Link、算子、聚合函数和查询上限。
-3. SQL 只允许 `SELECT`，并使用绑定参数。
-4. Oracle 查询尝试设置只读事务。
-5. 会员手机号、身份证等字段不进入公开 Ontology。
-6. 建议只有人工采纳后才创建任务，不自动执行库存或订单变更。
+1. The input gate blocks destructive requests and sensitive-field requests.
+2. Plan validation restricts Objects, Properties, Links, operators, aggregate functions, and query limits.
+3. SQL must be `SELECT`-only and uses bind parameters.
+4. Oracle execution attempts to use a read-only transaction.
+5. Member phone numbers, identity numbers, and other PII are not exposed in the public Ontology model.
+6. Recommendations create tasks only after human acceptance; inventory and order changes are never executed automatically.
 
-## 当前范围与后续方向
+## Current Scope and Next Steps
 
-当前版本已覆盖：
+The current release covers:
 
-- 受控自然语言取数
-- 指标定义与基线对比
-- 固定阈值/相对变化异常监测
-- 门店/SKU 维度扫描
-- 确定性证据补查
-- 结构化诊断和待确认建议
-- 页面确认、任务、反馈和审计
+- Controlled natural-language data access
+- Metric definitions and baseline comparison
+- Fixed-threshold and relative-change anomaly monitoring
+- Store/SKU dimension scans
+- Deterministic evidence lookup
+- Structured diagnosis and pending recommendations
+- Console confirmation, tasks, feedback, and audit events
 
-后续可继续建设：
+Possible next extensions:
 
-- 天气、物流、排班等新的 Ontology 对象
-- 更严格的“问题语义覆盖检查”
-- 任务状态流转和权限认证
-- 脱敏快照与离线演示数据
-- MCP/API 服务化与生产调度
+- Weather, logistics, and staffing Ontology objects
+- A stricter semantic-coverage gate for unsupported questions
+- Task state transitions and user authorization
+- De-identified snapshots for offline demonstrations
+- MCP/API service packaging and production scheduling
 
 ## License
 
